@@ -18,9 +18,9 @@ int main() {
         }
 
         if (chute > escolha)
-            printf("O Numero digitado é maior\n");
+            printf("O Numero escolhido é menor\n");
         else
-            printf("O Numero digitado é menor\n");
+            printf("O Numero escolhido é maior\n");
             
     }
 

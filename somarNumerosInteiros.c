@@ -5,10 +5,12 @@ int main(){
     int soma = 0;
     int count = 0;
 
-    while(escolha <= 0){
+    while(1){
         printf("Escolha valores para somar ");
         scanf("%d", &escolha);
-        int somaAnterior = soma;
+        if(escolha < 0){
+            break;
+        }
         soma += escolha;
         count++;
     }
