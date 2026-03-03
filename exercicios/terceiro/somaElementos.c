@@ -10,7 +10,7 @@ int soma_vetor(int *v, int n) {
 }
 
 int main() {
-	int numeros[] = {1, 2, 3, 4, 5};
+	int numeros[] = {8, 9, 1, 2, 6};
 	int total = soma_vetor(numeros, 5);
 	printf("Soma = %d\n", total);
 	return 0;

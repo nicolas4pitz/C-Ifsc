@@ -4,7 +4,7 @@
 void inverte_string(char *str) {
 	int len = strlen(str);
 	char *inicio = str;
-	char *fim = str + len - 1;
+	char *fim = str + len - 1; // o 0
 	while (inicio < fim) {
 		char temp = *inicio;
 		*inicio = *fim;
