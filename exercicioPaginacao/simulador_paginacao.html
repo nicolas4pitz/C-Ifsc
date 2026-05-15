@@ -1,0 +1,1365 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador de Memória Virtual — Paginação</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #111318;
+    --surface2: #181c24;
+    --border: #252a36;
+    --border2: #2e3547;
+    --text: #e2e8f0;
+    --muted: #6b7a99;
+    --accent: #38bdf8;
+    --accent2: #818cf8;
+    --green: #34d399;
+    --yellow: #fbbf24;
+    --red: #f87171;
+    --orange: #fb923c;
+    --p1: #3b82f6;
+    --p1light: #1d3a6e;
+    --p2: #a855f7;
+    --p2light: #3b1f6e;
+    --p3: #10b981;
+    --p3light: #0d4a35;
+    --kernel: #ef4444;
+    --kernellight: #4a1515;
+    --swap: #f59e0b;
+    --swaplight: #4a3200;
+    --table: #64748b;
+    --tablelight: #1e2535;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 20px;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+  }
+  .logo span { color: var(--text); }
+  .badge {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .tabs {
+    margin-left: auto;
+    display: flex;
+    gap: 4px;
+  }
+  .tab {
+    padding: 6px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .tab.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+    font-weight: 700;
+  }
+  .tab:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Layout ── */
+  .sim-container {
+    display: none;
+    padding: 16px;
+    gap: 14px;
+  }
+  .sim-container.active { display: flex; }
+
+  /* Part 1 layout */
+  #part1.sim-container {
+    flex-direction: row;
+    align-items: flex-start;
+    height: calc(100vh - 57px);
+    overflow: hidden;
+  }
+
+  /* Part 2 layout */
+  #part2.sim-container {
+    flex-direction: row;
+    align-items: flex-start;
+    height: calc(100vh - 57px);
+    overflow: hidden;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .panel-header {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--accent);
+  }
+  .panel-body { padding: 12px; flex: 1; overflow-y: auto; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: var(--surface); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 10px; }
+
+  /* ── Process Card (Part 1) ── */
+  .process-card {
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .process-card:hover { border-color: var(--accent); }
+  .process-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+  .process-header {
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .process-pid {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+  }
+  .p1 { color: var(--p1); } .p2 { color: var(--p2); } .p3 { color: var(--p3); }
+
+  .tcb-tag {
+    font-size: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--muted);
+  }
+  .ptbr-val { color: var(--yellow); font-size: 11px; margin-left: auto; }
+
+  .var-list { padding: 6px 10px 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .var-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+  }
+  .var-btn:hover { border-color: var(--accent); background: var(--surface); }
+  .var-btn .vname { color: var(--accent); font-weight: 600; display: block; }
+  .var-btn .vaddr { color: var(--muted); font-size: 10px; }
+
+  /* ── MMU Panel ── */
+  .mmu-box {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+  .mmu-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .mmu-reg {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+  .reg-name { color: var(--yellow); width: 60px; flex-shrink: 0; }
+  .reg-val {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    padding: 3px 8px;
+    border-radius: 4px;
+    color: var(--accent);
+    font-size: 13px;
+    min-width: 80px;
+  }
+
+  /* Steps */
+  .steps-box {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 10px;
+    flex: 1;
+    overflow-y: auto;
+  }
+  .step-item {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.3s, transform 0.3s;
+  }
+  .step-item.visible { opacity: 1; transform: translateY(0); }
+  .step-num {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #000;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .step-content { font-size: 12px; line-height: 1.6; }
+  .step-content .label { color: var(--muted); font-size: 11px; }
+  .step-content .val { color: var(--accent2); font-weight: 600; }
+  .step-content .formula {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--green);
+  }
+  .step-error { color: var(--red); }
+  .step-ok { color: var(--green); }
+
+  /* ── RAM Grid ── */
+  .ram-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .frame-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border-radius: 5px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+  }
+  .frame-row.flash {
+    animation: flash 0.6s ease;
+  }
+  @keyframes flash {
+    0%,100% { background: transparent; }
+    20%,60% { background: rgba(56,189,248,0.2); border-color: var(--accent); }
+  }
+  .frame-num {
+    width: 22px;
+    font-size: 10px;
+    color: var(--muted);
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .frame-bar {
+    flex: 1;
+    height: 20px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    font-size: 10px;
+    font-weight: 600;
+    position: relative;
+    overflow: hidden;
+    transition: background 0.3s;
+  }
+  .frame-bar.empty { background: var(--surface2); color: var(--muted); }
+  .frame-bar.table { background: var(--tablelight); color: var(--table); border: 1px solid var(--table); }
+  .frame-bar.p1c { background: var(--p1light); color: var(--p1); border: 1px solid var(--p1); }
+  .frame-bar.p2c { background: var(--p2light); color: var(--p2); border: 1px solid var(--p2); }
+  .frame-bar.p3c { background: var(--p3light); color: var(--p3); border: 1px solid var(--p3); }
+  .frame-bar.kernel { background: var(--kernellight); color: var(--kernel); border: 1px solid var(--kernel); }
+  .frame-addr {
+    font-size: 10px;
+    color: var(--muted);
+    width: 80px;
+    flex-shrink: 0;
+    text-align: right;
+  }
+
+  /* ── Page table display ── */
+  .ptable {
+    font-size: 11px;
+    border-collapse: collapse;
+    width: 100%;
+  }
+  .ptable th {
+    color: var(--muted);
+    font-weight: 400;
+    padding: 3px 6px;
+    text-align: left;
+    border-bottom: 1px solid var(--border2);
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+  .ptable td {
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .ptable tr:last-child td { border-bottom: none; }
+
+  /* ── Part 2 specifics ── */
+  .page-state {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .state-inv { background: #2a1f1f; color: #ff6b6b; border: 1px solid #5c2a2a; }
+  .state-ram { background: #1a3a2a; color: #4ade80; border: 1px solid #1e5c3a; }
+  .state-swap { background: #3a2a00; color: #fbbf24; border: 1px solid #5c4000; }
+
+  .btn {
+    padding: 7px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border2);
+    background: var(--surface2);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+    font-weight: 700;
+  }
+  .btn-primary:hover { background: #67d2f8; border-color: #67d2f8; color: #000; }
+  .btn-danger { border-color: var(--red); color: var(--red); }
+  .btn-danger:hover { background: #4a1515; }
+  .btn-warn { border-color: var(--yellow); color: var(--yellow); }
+  .btn-warn:hover { background: var(--swaplight); }
+
+  /* Modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    padding: 24px;
+    min-width: 380px;
+    max-width: 500px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .modal-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    margin-bottom: 6px;
+  }
+  .modal-sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+  .frame-option-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 16px;
+    max-height: 250px;
+    overflow-y: auto;
+  }
+  .frame-option {
+    padding: 8px;
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.15s;
+    background: var(--surface2);
+  }
+  .frame-option:hover { border-color: var(--accent); background: var(--surface); }
+  .frame-option .fo-num { color: var(--accent); font-size: 13px; font-weight: 700; }
+  .frame-option .fo-owner { color: var(--muted); }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* Log */
+  .log-area {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 8px;
+    font-size: 11px;
+    line-height: 1.8;
+    max-height: 120px;
+    overflow-y: auto;
+    margin-top: 8px;
+  }
+  .log-info { color: var(--muted); }
+  .log-ok { color: var(--green); }
+  .log-warn { color: var(--yellow); }
+  .log-err { color: var(--red); }
+  .log-accent { color: var(--accent); }
+
+  /* Swap area */
+  .swap-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .swap-block {
+    padding: 5px 8px;
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    font-size: 11px;
+    background: var(--surface2);
+  }
+  .swap-block.used { border-color: var(--swap); background: var(--swaplight); }
+  .swap-block .sb-num { color: var(--muted); font-size: 10px; }
+  .swap-block.used .sb-num { color: var(--yellow); }
+  .swap-block .sb-page { font-size: 12px; color: var(--text); }
+
+  /* indicators */
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 4px;
+  }
+  .dot-p1 { background: var(--p1); }
+  .dot-p2 { background: var(--p2); }
+  .dot-p3 { background: var(--p3); }
+  .dot-free { background: var(--border2); }
+  .dot-table { background: var(--table); }
+  .dot-kernel { background: var(--kernel); }
+
+  .info-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    margin: 2px;
+  }
+
+  /* ── Widths ── */
+  #part1 .left-panel { width: 220px; flex-shrink: 0; height: 100%; }
+  #part1 .mid-panel { flex: 1; height: 100%; }
+  #part1 .right-panel { width: 230px; flex-shrink: 0; height: 100%; }
+
+  #part2 .left-panel { width: 230px; flex-shrink: 0; height: 100%; }
+  #part2 .mid-panel { flex: 1; height: 100%; }
+  #part2 .right-panel { width: 240px; flex-shrink: 0; height: 100%; }
+
+  .mid-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    height: 100%;
+  }
+  .mid-top { flex-shrink: 0; }
+  .mid-bot { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+  /* Reset btn */
+  .reset-btn {
+    font-size: 10px;
+    padding: 3px 8px;
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .reset-btn:hover { border-color: var(--red); color: var(--red); }
+
+  /* P2 process card */
+  .p2-var-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    margin-bottom: 5px;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .p2-var-btn:hover { border-color: var(--accent); }
+  .p2-var-btn .vname { color: var(--accent); font-weight: 600; }
+  .p2-var-btn .vpage { color: var(--muted); font-size: 10px; flex: 1; text-align: right; }
+
+  .section-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 6px;
+    margin-top: 10px;
+  }
+  .section-label:first-child { margin-top: 0; }
+
+  /* mmu arrow */
+  .arrow-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin: 6px 0;
+  }
+  .arrow-box {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    text-align: center;
+    min-width: 80px;
+  }
+  .arrow-box .abl { font-size: 10px; color: var(--muted); }
+  .arrow-box .abv { font-size: 13px; color: var(--accent); font-weight: 700; }
+  .arrow-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border2);
+    position: relative;
+  }
+  .arrow-line::after {
+    content: '▶';
+    position: absolute;
+    right: -5px;
+    top: -7px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* no-select */
+  .var-btn, .p2-var-btn, .frame-option, .tab { user-select: none; }
+
+</style>
+<script>var __uzdbm_1 = "85e9437e-8113-407c-b238-a39577fb4a53";var __uzdbm_2 = "ZTFmNGMwMTQtZGwzeS00NWJmLWEzMmUtMDQ2MDE4ZmU3MzhlJDE5MS4zNi4xNS42";var __uzdbm_3 = "7f900085e9437e-8113-407c-b238-a39577fb4a531-177888819600931420-0018e2c738938378a2076";var __uzdbm_4 = "false";var __uzdbm_5 = "uzmx";var __uzdbm_6 = "7f9000c4074c74-27db-4082-949e-043dc1bc82331-177888819600931420-0d09b5f95e3530b376";var __uzdbm_7 = "ifsc.edu.br";</script> <script>   (function (w, d, e, u, c, g, a, b) {     w["SSJSConnectorObj"] = w["SSJSConnectorObj"] || {       ss_cid: c,       domain_info: "auto",     };     w[g] = function (i, j) {       w["SSJSConnectorObj"][i] = j;     };     a = d.createElement(e);     a.async = true;     if (       navigator.userAgent.indexOf('MSIE') !== -1 ||       navigator.appVersion.indexOf('Trident/') > -1     ) {       u = u.replace("/advanced/", "/advanced/ie/");     }     a.src = u;     b = d.getElementsByTagName(e)[0];     b.parentNode.insertBefore(a, b);   })(     window, document, "script", "/18f5227b-e27b-445a-a53f-f845fbe69b40/stormcaster.js", "dl40", "ssConf"   );   ssConf("c1", "https://sig.ifsc.edu.br");   ssConf("c3", "c99a4269-161c-4242-a3f0-28d44fa6ce24");   ssConf("au", "sig.ifsc.edu.br");   ssConf("cu", "validate.perfdrive.com, ssc"); </script> </head>
+<body>
+
+<header>
+  <div class="logo">HW<span>PAG</span></div>
+  <span class="badge">IFSC · Sistemas Operacionais</span>
+  <span class="badge" id="status-badge">Nenhuma variável selecionada</span>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab(1)">Parte 1 — Tradução</button>
+    <button class="tab" onclick="switchTab(2)">Parte 2 — Page Fault</button>
+  </div>
+</header>
+
+<!-- ══════════════ PARTE 1 ══════════════ -->
+<div id="part1" class="sim-container active">
+
+  <!-- LEFT: Processes + TCB -->
+  <div class="panel left-panel">
+    <div class="panel-header">
+      <div class="panel-title">Processos</div>
+      <div class="badge">TCB</div>
+    </div>
+    <div class="panel-body" id="p1-proc-panel"></div>
+  </div>
+
+  <!-- MID: MMU -->
+  <div class="mid-inner" style="flex:1; overflow:hidden;">
+
+    <div class="panel mid-top" style="flex-shrink:0;">
+      <div class="panel-header">
+        <div class="panel-title">MMU — Memory Management Unit</div>
+      </div>
+      <div class="panel-body">
+        <div style="display:flex; gap:10px; align-items:stretch; flex-wrap:wrap;">
+          <!-- Registers -->
+          <div class="mmu-box" style="flex:0 0 auto; min-width:160px;">
+            <div class="mmu-title">Registradores</div>
+            <div class="mmu-reg">
+              <span class="reg-name">PTBR</span>
+              <span class="reg-val" id="mmu-ptbr">—</span>
+            </div>
+            <div class="mmu-reg">
+              <span class="reg-name">End. Lógico</span>
+              <span class="reg-val" id="mmu-logaddr">—</span>
+            </div>
+            <div class="mmu-reg">
+              <span class="reg-name">Página</span>
+              <span class="reg-val" id="mmu-page">—</span>
+            </div>
+            <div class="mmu-reg">
+              <span class="reg-name">Offset</span>
+              <span class="reg-val" id="mmu-offset">—</span>
+            </div>
+            <div class="mmu-reg">
+              <span class="reg-name">Quadro</span>
+              <span class="reg-val" id="mmu-frame">—</span>
+            </div>
+            <div class="mmu-reg">
+              <span class="reg-name" style="color:var(--green)">End. Físico</span>
+              <span class="reg-val" id="mmu-physaddr" style="color:var(--green)">—</span>
+            </div>
+          </div>
+          <!-- Flow diagram -->
+          <div class="mmu-box" style="flex:1;">
+            <div class="mmu-title">Fluxo de Tradução</div>
+            <div id="mmu-flow" style="font-size:11px; color:var(--muted); line-height:2;">
+              Selecione um processo e clique em uma variável para visualizar a tradução.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel mid-bot" style="flex:1; overflow:hidden; display:flex; flex-direction:column;">
+      <div class="panel-header">
+        <div class="panel-title">Passos da Tradução</div>
+      </div>
+      <div class="panel-body" id="p1-steps" style="flex:1; overflow-y:auto;">
+        <p style="color:var(--muted); font-size:12px;">Aguardando acesso à memória...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: RAM -->
+  <div class="panel right-panel">
+    <div class="panel-header">
+      <div class="panel-title">RAM Física</div>
+      <div style="margin-left:auto; display:flex; gap:4px; flex-wrap:wrap;">
+        <span class="info-pill"><span class="dot dot-table"></span>Tab</span>
+        <span class="info-pill"><span class="dot dot-p1"></span>P1</span>
+        <span class="info-pill"><span class="dot dot-p2"></span>P2</span>
+        <span class="info-pill"><span class="dot dot-p3"></span>P3</span>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="ram-grid" id="p1-ram"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════ PARTE 2 ══════════════ -->
+<div id="part2" class="sim-container">
+
+  <!-- LEFT: Processes -->
+  <div class="panel left-panel">
+    <div class="panel-header">
+      <div class="panel-title">Processos</div>
+      <button class="reset-btn" onclick="resetPart2()">↺ Reset</button>
+    </div>
+    <div class="panel-body" id="p2-proc-panel"></div>
+  </div>
+
+  <!-- MID -->
+  <div class="mid-inner" style="flex:1; overflow:hidden;">
+
+    <div class="panel mid-top">
+      <div class="panel-header">
+        <div class="panel-title">MMU — Tradução + Eventos</div>
+      </div>
+      <div class="panel-body">
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-start;">
+          <div class="mmu-box" style="min-width:160px; flex:0 0 auto;">
+            <div class="mmu-title">Registradores</div>
+            <div class="mmu-reg"><span class="reg-name">PTBR</span><span class="reg-val" id="p2-mmu-ptbr">—</span></div>
+            <div class="mmu-reg"><span class="reg-name">End. Lógico</span><span class="reg-val" id="p2-mmu-logaddr">—</span></div>
+            <div class="mmu-reg"><span class="reg-name">Página</span><span class="reg-val" id="p2-mmu-page">—</span></div>
+            <div class="mmu-reg"><span class="reg-name">Offset</span><span class="reg-val" id="p2-mmu-offset">—</span></div>
+            <div class="mmu-reg"><span class="reg-name">Estado</span><span class="reg-val" id="p2-mmu-state" style="color:var(--yellow)">—</span></div>
+            <div class="mmu-reg"><span class="reg-name" style="color:var(--green)">End. Físico</span><span class="reg-val" id="p2-mmu-physaddr" style="color:var(--green)">—</span></div>
+          </div>
+          <div class="mmu-box" style="flex:1;">
+            <div class="mmu-title">Log de Eventos</div>
+            <div class="log-area" id="p2-log">
+              <span class="log-info">Sistema iniciado. Todas as páginas INV.</span><br>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel mid-bot" style="flex:1; overflow:hidden; display:flex; flex-direction:column;">
+      <div class="panel-header">
+        <div class="panel-title">Tabelas de Páginas</div>
+      </div>
+      <div class="panel-body" id="p2-ptables" style="overflow-y:auto; flex:1;"></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: RAM + SWAP -->
+  <div class="panel right-panel">
+    <div class="panel-header">
+      <div class="panel-title">Memória</div>
+      <div style="margin-left:auto; display:flex; gap:4px; flex-wrap:wrap;">
+        <span class="info-pill"><span class="dot dot-kernel"></span>Kernel</span>
+        <span class="info-pill"><span class="dot dot-p1"></span>P1</span>
+        <span class="info-pill"><span class="dot dot-p2"></span>P2</span>
+        <span class="info-pill"><span class="dot dot-p3"></span>P3</span>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="section-label">RAM — Quadros 0–15</div>
+      <div class="ram-grid" id="p2-ram"></div>
+      <div class="section-label" style="margin-top:12px;">Área de SWAP — Blocos 16–23</div>
+      <div class="swap-grid" id="p2-swap"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Part 2 -->
+<div class="modal-overlay" id="p2-modal">
+  <div class="modal">
+    <div class="modal-title" id="p2-modal-title">Page Fault!</div>
+    <div class="modal-sub" id="p2-modal-sub"></div>
+    <div class="frame-option-list" id="p2-modal-frames"></div>
+    <div class="modal-actions" id="p2-modal-actions"></div>
+  </div>
+</div>
+
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  PARTE 1 — DATA & LOGIC
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const PAGE_SIZE = 1024;
+
+const P1_CONFIG = {
+  id: 'P1', cls: 'p1', ptbr: 0x0000, ptbrLabel: '0x0000',
+  pages: [5, 8, 9, 11],
+  vars: [
+    { name: 'a', page: 0, offset: 0x040 },
+    { name: 'b', page: 1, offset: 0x100 },
+    { name: 'c', page: 2, offset: 0x200 },
+    { name: 'd', page: 3, offset: 0x300 },
+  ]
+};
+const P2_CONFIG = {
+  id: 'P2', cls: 'p2', ptbr: 0x0100, ptbrLabel: '0x0100',
+  pages: [1, 2, 12, 13],
+  vars: [
+    { name: 'x', page: 0, offset: 0x080 },
+    { name: 'y', page: 1, offset: 0x150 },
+    { name: 'z', page: 2, offset: 0x2A0 },
+    { name: 'w', page: 3, offset: 0x380 },
+  ]
+};
+const P3_CONFIG = {
+  id: 'P3', cls: 'p3', ptbr: 0x0200, ptbrLabel: '0x0200',
+  pages: [3, 4, 14, 15],
+  vars: [
+    { name: 'm', page: 0, offset: 0x010 },
+    { name: 'n', page: 1, offset: 0x190 },
+    { name: 'p', page: 2, offset: 0x250 },
+    { name: 'q', page: 3, offset: 0x3C0 },
+  ]
+};
+const P1_PROCS = [P1_CONFIG, P2_CONFIG, P3_CONFIG];
+
+// Frame → owner for part 1
+const FRAME_OWNER_P1 = {
+  0: 'table', 1: 'p2c', 2: 'p2c', 3: 'p3c', 4: 'p3c',
+  5: 'p1c', 6: null, 7: null, 8: 'p1c', 9: 'p1c',
+  10: null, 11: 'p1c', 12: 'p2c', 13: 'p2c', 14: 'p3c', 15: 'p3c'
+};
+const FRAME_LABEL_P1 = {
+  0: 'Tabelas', 1: 'P2·Pág0', 2: 'P2·Pág1', 3: 'P3·Pág0', 4: 'P3·Pág1',
+  5: 'P1·Pág0', 8: 'P1·Pág1', 9: 'P1·Pág2', 11: 'P1·Pág3',
+  12: 'P2·Pág2', 13: 'P2·Pág3', 14: 'P3·Pág2', 15: 'P3·Pág3'
+};
+
+let p1ActiveProc = null;
+
+function buildPart1() {
+  // Build process panel
+  const panel = document.getElementById('p1-proc-panel');
+  panel.innerHTML = '';
+  P1_PROCS.forEach(proc => {
+    const card = document.createElement('div');
+    card.className = 'process-card';
+    card.id = `proc-card-${proc.id}`;
+
+    const logAddr0 = proc.pages[0] * PAGE_SIZE + proc.vars[0].offset;
+    const varHtml = proc.vars.map((v, i) => {
+      const logAddr = proc.pages[v.page] * PAGE_SIZE + v.offset;
+      return `<button class="var-btn" onclick="p1Access('${proc.id}',${i})">
+        <span class="vname">${v.name}</span>
+        <span class="vaddr">Pág ${v.page} + 0x${v.offset.toString(16).padStart(3,'0')}</span>
+      </button>`;
+    }).join('');
+
+    card.innerHTML = `
+      <div class="process-header" onclick="p1SelectProc('${proc.id}')">
+        <span class="process-pid ${proc.cls}">${proc.id}</span>
+        <span class="tcb-tag">TCB</span>
+        <span class="ptbr-val">PTBR=${proc.ptbrLabel}</span>
+      </div>
+      <div class="var-list">${varHtml}</div>
+    `;
+    panel.appendChild(card);
+  });
+
+  // Build RAM
+  buildRamP1();
+
+  // Auto select first
+  p1SelectProc('P1');
+}
+
+function buildRamP1() {
+  const ram = document.getElementById('p1-ram');
+  ram.innerHTML = '';
+  for (let f = 0; f < 16; f++) {
+    const owner = FRAME_OWNER_P1[f];
+    const label = FRAME_LABEL_P1[f] || '—';
+    const addrStart = `0x${(f * 0x400).toString(16).padStart(4,'0')}`;
+    const addrEnd = `0x${(f * 0x400 + 0x3FF).toString(16).padStart(4,'0')}`;
+    const barCls = owner || 'empty';
+    ram.innerHTML += `
+      <div class="frame-row" id="p1-frame-${f}">
+        <span class="frame-num">${f}</span>
+        <div class="frame-bar ${barCls}">${label}</div>
+        <span class="frame-addr">${addrStart}</span>
+      </div>`;
+  }
+}
+
+function p1SelectProc(pid) {
+  const proc = P1_PROCS.find(p => p.id === pid);
+  p1ActiveProc = proc;
+  // Update cards
+  document.querySelectorAll('.process-card').forEach(c => c.classList.remove('active'));
+  document.getElementById(`proc-card-${pid}`).classList.add('active');
+  // Update MMU registers
+  document.getElementById('mmu-ptbr').textContent = proc.ptbrLabel;
+  document.getElementById('mmu-logaddr').textContent = '—';
+  document.getElementById('mmu-page').textContent = '—';
+  document.getElementById('mmu-offset').textContent = '—';
+  document.getElementById('mmu-frame').textContent = '—';
+  document.getElementById('mmu-physaddr').textContent = '—';
+  // Update flow
+  document.getElementById('mmu-flow').innerHTML = `
+    <span style="color:var(--muted);">Processo ativo: </span>
+    <span class="${proc.cls}" style="font-weight:700">${proc.id}</span>
+    <span style="color:var(--muted);"> — PTBR aponta para offset </span>
+    <span style="color:var(--yellow)">${proc.ptbrLabel}</span>
+    <span style="color:var(--muted);"> no Frame 0 (tabela de páginas).</span><br>
+    <span style="color:var(--muted);">Clique em uma variável para traduzir o endereço.</span>`;
+  document.getElementById('p1-steps').innerHTML = '<p style="color:var(--muted);font-size:12px;">Clique em uma variável para iniciar a tradução.</p>';
+  document.getElementById('status-badge').textContent = `Processo ativo: ${pid}`;
+}
+
+function p1Access(pid, varIdx) {
+  const proc = P1_PROCS.find(p => p.id === pid);
+  p1SelectProc(pid);
+  const v = proc.vars[varIdx];
+  const page = v.page;
+  const offset = v.offset;
+  const logAddr = page * PAGE_SIZE + offset;
+  const frame = proc.pages[page];
+  const physAddr = frame * PAGE_SIZE + offset;
+
+  // Update MMU regs
+  document.getElementById('mmu-logaddr').textContent = `0x${logAddr.toString(16).padStart(4,'0')}`;
+  document.getElementById('mmu-page').textContent = `${page} (${page.toString(2).padStart(2,'0')}b)`;
+  document.getElementById('mmu-offset').textContent = `0x${offset.toString(16).padStart(3,'0')}`;
+  document.getElementById('mmu-frame').textContent = `${frame}`;
+  document.getElementById('mmu-physaddr').textContent = `0x${physAddr.toString(16).padStart(4,'0')}`;
+
+  // Update flow
+  document.getElementById('mmu-flow').innerHTML = `
+    <span style="color:var(--muted);">CPU gerou endereço lógico </span>
+    <span style="color:var(--accent);font-weight:700">0x${logAddr.toString(16).padStart(4,'0')}</span>
+    <span style="color:var(--muted);"> → MMU decompõe → Página </span>
+    <span style="color:var(--yellow);font-weight:700">${page}</span>
+    <span style="color:var(--muted);"> + Offset </span>
+    <span style="color:var(--accent2)">0x${offset.toString(16).padStart(3,'0')}</span>
+    <span style="color:var(--muted);"> → consulta tabela em Frame 0 → Quadro físico </span>
+    <span style="color:var(--green);font-weight:700">${frame}</span>
+    <span style="color:var(--muted);"> → End. físico: </span>
+    <span style="color:var(--green);font-weight:700">0x${physAddr.toString(16).padStart(4,'0')}</span>`;
+
+  // Build steps
+  const steps = document.getElementById('p1-steps');
+  steps.innerHTML = '';
+  const stepData = [
+    {
+      title: 'CPU gera endereço lógico',
+      html: `Variável <span class="val">${proc.id}.${v.name}</span> em Pág <span class="val">${page}</span>, Offset <span class="val">0x${offset.toString(16).padStart(3,'0')}</span><br>
+             <span class="label">Endereço lógico = Pág × 1024 + Offset</span><br>
+             <div class="formula">${page} × 1024 + ${offset} = <strong>0x${logAddr.toString(16).padStart(4,'0')}</strong> (${logAddr} dec)</div>`
+    },
+    {
+      title: 'MMU decompõe o endereço',
+      html: `<span class="label">Endereço lógico: </span><span class="val">0x${logAddr.toString(16).padStart(4,'0')}</span><br>
+             <span class="label">Bits de página (endereço >> 10): </span><span class="val">${page}</span><br>
+             <span class="label">Bits de offset (endereço & 0x3FF): </span><span class="val">0x${offset.toString(16).padStart(3,'0')}</span>`
+    },
+    {
+      title: 'Consulta ao Frame 0 (Tabela de Páginas)',
+      html: `<span class="label">PTBR do ${proc.id}: </span><span class="val">${proc.ptbrLabel}</span><br>
+             <span class="label">Entrada [${page}] da tabela → </span><span class="val">Quadro ${frame}</span><br>
+             <div class="formula">Frame 0 [${proc.ptbrLabel} + ${page}] = <strong>${frame}</strong></div>`
+    },
+    {
+      title: 'Flash na RAM — Quadro físico acessado',
+      html: `<span class="label">Quadro físico encontrado: </span><span class="val">${frame}</span><br>
+             <span class="label">Faixa de endereços: </span>
+             <span class="val">0x${(frame*0x400).toString(16).padStart(4,'0')} – 0x${(frame*0x400+0x3FF).toString(16).padStart(4,'0')}</span>`
+    },
+    {
+      title: 'Endereço físico calculado',
+      html: `<div class="formula step-ok">${frame} × 1024 + ${offset} = <strong>0x${physAddr.toString(16).padStart(4,'0')}</strong> ✓</div>
+             <span class="label">Acesso bem-sucedido. Dado em </span><span class="val">${proc.id}.${v.name}</span>`
+    }
+  ];
+
+  stepData.forEach((s, i) => {
+    const el = document.createElement('div');
+    el.className = 'step-item';
+    el.innerHTML = `<div class="step-num">${i+1}</div>
+      <div class="step-content"><strong style="color:var(--text)">${s.title}</strong><br>${s.html}</div>`;
+    steps.appendChild(el);
+    setTimeout(() => el.classList.add('visible'), i * 120 + 50);
+  });
+
+  // Flash frame 0 first, then target
+  flashFrame_p1(0);
+  setTimeout(() => flashFrame_p1(frame), 400);
+
+  document.getElementById('status-badge').textContent = `${proc.id}.${v.name} → 0x${physAddr.toString(16).padStart(4,'0')}`;
+}
+
+function flashFrame_p1(f) {
+  const el = document.getElementById(`p1-frame-${f}`);
+  if (!el) return;
+  el.classList.remove('flash');
+  void el.offsetWidth;
+  el.classList.add('flash');
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  PARTE 2 — DATA & LOGIC
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const PROCS_P2 = [
+  {
+    id: 'P1', cls: 'p1', ptbr: '0x0000',
+    vars: [{name:'a',page:0,offset:0x040},{name:'b',page:1,offset:0x100},{name:'c',page:2,offset:0x200},{name:'d',page:3,offset:0x300}]
+  },
+  {
+    id: 'P2', cls: 'p2', ptbr: '0x0100',
+    vars: [{name:'x',page:0,offset:0x080},{name:'y',page:1,offset:0x150},{name:'z',page:2,offset:0x2A0},{name:'w',page:3,offset:0x380}]
+  },
+  {
+    id: 'P3', cls: 'p3', ptbr: '0x0200',
+    vars: [{name:'m',page:0,offset:0x010},{name:'n',page:1,offset:0x190},{name:'p',page:2,offset:0x250},{name:'q',page:3,offset:0x3C0}]
+  }
+];
+
+// State
+let p2State;
+function initP2State() {
+  p2State = {
+    pageTable: {
+      P1: [{state:'INV',loc:null},{state:'INV',loc:null},{state:'INV',loc:null},{state:'INV',loc:null}],
+      P2: [{state:'INV',loc:null},{state:'INV',loc:null},{state:'INV',loc:null},{state:'INV',loc:null}],
+      P3: [{state:'INV',loc:null},{state:'INV',loc:null},{state:'INV',loc:null},{state:'INV',loc:null}],
+    },
+    // frames 0=table 1=kernel 2-15 user
+    frames: Array(16).fill(null), // null = free, {pid,page}
+    // swap blocks 16-23
+    swapBlocks: Array(8).fill(null), // null = free, {pid,page}
+    activeProc: 'P1',
+    pending: null, // {pid, page, offset, varName}
+  };
+  p2State.frames[0] = {pid:'OS', page:'tabelas'};
+  p2State.frames[1] = {pid:'KERNEL', page:'kernel'};
+}
+
+let p2LogLines = [];
+function p2Log(msg, cls='log-info') {
+  p2LogLines.push(`<span class="${cls}">${msg}</span>`);
+  if (p2LogLines.length > 40) p2LogLines = p2LogLines.slice(-40);
+  const el = document.getElementById('p2-log');
+  if (el) { el.innerHTML = p2LogLines.join('<br>'); el.scrollTop = el.scrollHeight; }
+}
+
+function buildPart2() {
+  initP2State();
+  p2LogLines = [];
+  renderP2();
+  p2Log('Sistema iniciado. Frames 0=Tabelas, 1=Kernel. Páginas INV.', 'log-info');
+}
+
+function renderP2() {
+  renderP2Procs();
+  renderP2RAM();
+  renderP2Swap();
+  renderP2PTables();
+}
+
+function renderP2Procs() {
+  const panel = document.getElementById('p2-proc-panel');
+  panel.innerHTML = '';
+  PROCS_P2.forEach(proc => {
+    const active = p2State.activeProc === proc.id;
+    const div = document.createElement('div');
+    div.className = `process-card${active?' active':''}`;
+    div.id = `p2-proc-${proc.id}`;
+
+    const varsHtml = proc.vars.map((v,i) => {
+      const entry = p2State.pageTable[proc.id][v.page];
+      const stateTag = stateHtml(entry.state);
+      return `<button class="p2-var-btn" onclick="p2AccessVar('${proc.id}',${i})">
+        <span class="vname">${v.name}</span>
+        <span style="color:var(--muted);font-size:10px">Pág${v.page}+0x${v.offset.toString(16)}</span>
+        <span class="vpage">${stateTag}</span>
+      </button>`;
+    }).join('');
+
+    div.innerHTML = `
+      <div class="process-header" onclick="p2SelectProc('${proc.id}')">
+        <span class="process-pid ${proc.cls}">${proc.id}</span>
+        <span class="tcb-tag">TCB</span>
+        <span class="ptbr-val">PTBR=${proc.ptbr}</span>
+      </div>
+      <div style="padding:6px 10px 10px">${varsHtml}</div>`;
+    panel.appendChild(div);
+  });
+}
+
+function stateHtml(s) {
+  if (s === 'INV') return '<span class="page-state state-inv">INV</span>';
+  if (s === 'RAM') return '<span class="page-state state-ram">RAM</span>';
+  if (s === 'SWAP') return '<span class="page-state state-swap">SWAP</span>';
+}
+
+function renderP2RAM() {
+  const ram = document.getElementById('p2-ram');
+  ram.innerHTML = '';
+  for (let f = 0; f < 16; f++) {
+    const occ = p2State.frames[f];
+    let barCls = 'empty', label = '—';
+    if (f === 0) { barCls = 'table'; label = 'Tabelas'; }
+    else if (f === 1) { barCls = 'kernel'; label = 'Kernel'; }
+    else if (occ) {
+      barCls = occ.pid === 'P1' ? 'p1c' : occ.pid === 'P2' ? 'p2c' : 'p3c';
+      label = `${occ.pid}·Pág${occ.page}`;
+    }
+    const addrStart = `0x${(f*0x400).toString(16).padStart(4,'0')}`;
+    ram.innerHTML += `
+      <div class="frame-row" id="p2-frame-${f}">
+        <span class="frame-num">${f}</span>
+        <div class="frame-bar ${barCls}">${label}</div>
+        <span class="frame-addr">${addrStart}</span>
+      </div>`;
+  }
+}
+
+function renderP2Swap() {
+  const swap = document.getElementById('p2-swap');
+  swap.innerHTML = '';
+  for (let i = 0; i < 8; i++) {
+    const blk = p2State.swapBlocks[i];
+    const num = 16 + i;
+    swap.innerHTML += `
+      <div class="swap-block ${blk?'used':''}">
+        <div class="sb-num">Bloco ${num}</div>
+        <div class="sb-page">${blk ? `${blk.pid}·Pág${blk.page}` : '—'}</div>
+      </div>`;
+  }
+}
+
+function renderP2PTables() {
+  const el = document.getElementById('p2-ptables');
+  el.innerHTML = '';
+  PROCS_P2.forEach(proc => {
+    const entries = p2State.pageTable[proc.id];
+    const rows = entries.map((e,i) => {
+      const locStr = e.state === 'RAM' ? `Frame ${e.loc}` : e.state === 'SWAP' ? `Bloco ${e.loc}` : '—';
+      return `<tr>
+        <td>${i}</td>
+        <td>${stateHtml(e.state)}</td>
+        <td style="color:var(--muted)">${locStr}</td>
+      </tr>`;
+    }).join('');
+
+    el.innerHTML += `
+      <div style="margin-bottom:12px;">
+        <div style="margin-bottom:4px;display:flex;align-items:center;gap:8px;">
+          <span class="process-pid ${proc.cls}" style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px">${proc.id}</span>
+          <span style="color:var(--muted);font-size:11px">PTBR=${proc.ptbr}</span>
+        </div>
+        <table class="ptable">
+          <tr><th>Pág</th><th>Estado</th><th>Localização</th></tr>
+          ${rows}
+        </table>
+      </div>`;
+  });
+}
+
+function p2SelectProc(pid) {
+  p2State.activeProc = pid;
+  const proc = PROCS_P2.find(p => p.id === pid);
+  document.getElementById('p2-mmu-ptbr').textContent = proc.ptbr;
+  document.getElementById('p2-mmu-logaddr').textContent = '—';
+  document.getElementById('p2-mmu-page').textContent = '—';
+  document.getElementById('p2-mmu-offset').textContent = '—';
+  document.getElementById('p2-mmu-state').textContent = '—';
+  document.getElementById('p2-mmu-physaddr').textContent = '—';
+  renderP2Procs();
+  document.getElementById('status-badge').textContent = `Processo ativo: ${pid}`;
+}
+
+function p2AccessVar(pid, varIdx) {
+  p2SelectProc(pid);
+  const proc = PROCS_P2.find(p => p.id === pid);
+  const v = proc.vars[varIdx];
+  const page = v.page;
+  const offset = v.offset;
+  const logAddr = page * PAGE_SIZE + offset;
+
+  document.getElementById('p2-mmu-logaddr').textContent = `0x${logAddr.toString(16).padStart(4,'0')}`;
+  document.getElementById('p2-mmu-page').textContent = `${page}`;
+  document.getElementById('p2-mmu-offset').textContent = `0x${offset.toString(16).padStart(3,'0')}`;
+
+  const entry = p2State.pageTable[pid][page];
+  document.getElementById('p2-mmu-state').textContent = entry.state;
+
+  if (entry.state === 'RAM') {
+    // Normal translation
+    const frame = entry.loc;
+    const physAddr = frame * PAGE_SIZE + offset;
+    document.getElementById('p2-mmu-physaddr').textContent = `0x${physAddr.toString(16).padStart(4,'0')}`;
+    p2Log(`✓ ${pid}.${v.name}: Pág${page} → Frame${frame} → End. Físico 0x${physAddr.toString(16).padStart(4,'0')}`, 'log-ok');
+    flashP2Frame(frame);
+    document.getElementById('status-badge').textContent = `${pid}.${v.name} → 0x${physAddr.toString(16).padStart(4,'0')}`;
+  } else if (entry.state === 'INV') {
+    document.getElementById('p2-mmu-physaddr').textContent = 'PAGE FAULT';
+    p2Log(`⚠ PAGE FAULT — ${pid}.${v.name}: Pág${page} INVÁLIDA. Escolha um frame livre.`, 'log-warn');
+    document.getElementById('status-badge').textContent = `Page Fault! ${pid}.${v.name} — página inválida`;
+    p2State.pending = {pid, page, offset, varName: v.name, varIdx};
+    showModalAllocate(pid, page, 'inv');
+  } else if (entry.state === 'SWAP') {
+    document.getElementById('p2-mmu-physaddr').textContent = 'PAGE FAULT';
+    p2Log(`⚠ PAGE FAULT — ${pid}.${v.name}: Pág${page} na SWAP (bloco ${entry.loc}). Precisa swap-in.`, 'log-warn');
+    document.getElementById('status-badge').textContent = `Page Fault! ${pid}.${v.name} — página em SWAP`;
+    p2State.pending = {pid, page, offset, varName: v.name, varIdx, swapBlock: entry.loc};
+    showModalAllocate(pid, page, 'swap');
+  }
+}
+
+function getFreeFrames() {
+  const free = [];
+  for (let f = 2; f <= 15; f++) {
+    if (!p2State.frames[f]) free.push(f);
+  }
+  return free;
+}
+
+function getOccupiedUserFrames() {
+  const occ = [];
+  for (let f = 2; f <= 15; f++) {
+    if (p2State.frames[f]) occ.push({frame: f, ...p2State.frames[f]});
+  }
+  return occ;
+}
+
+function getFreeSwapBlock() {
+  for (let i = 0; i < 8; i++) {
+    if (!p2State.swapBlocks[i]) return i;
+  }
+  return -1;
+}
+
+function showModalAllocate(pid, page, kind) {
+  const freeFrames = getFreeFrames();
+  const modal = document.getElementById('p2-modal');
+  const title = document.getElementById('p2-modal-title');
+  const sub = document.getElementById('p2-modal-sub');
+  const frameList = document.getElementById('p2-modal-frames');
+  const actions = document.getElementById('p2-modal-actions');
+
+  title.textContent = kind === 'inv' ? '⚠ Page Fault — Página Inválida' : '⚠ Page Fault — Página em SWAP';
+  title.style.color = 'var(--yellow)';
+  frameList.innerHTML = '';
+  actions.innerHTML = '';
+
+  if (freeFrames.length > 0) {
+    sub.textContent = `Página ${page} de ${pid} não está na RAM. Escolha um frame livre para alocar:`;
+    freeFrames.forEach(f => {
+      const btn = document.createElement('div');
+      btn.className = 'frame-option';
+      btn.innerHTML = `<div class="fo-num">Frame ${f}</div><div class="fo-owner">0x${(f*0x400).toString(16).padStart(4,'0')} — livre</div>`;
+      btn.onclick = () => { allocateFrame(f); modal.classList.remove('open'); };
+      frameList.appendChild(btn);
+    });
+    actions.innerHTML = `<button class="btn" onclick="document.getElementById('p2-modal').classList.remove('open')">Cancelar</button>`;
+  } else {
+    // No free frames — need eviction
+    sub.textContent = `Sem frames livres! Escolha um frame para liberar (será movido para SWAP):`;
+    const occFrames = getOccupiedUserFrames();
+    occFrames.forEach(o => {
+      const btn = document.createElement('div');
+      btn.className = 'frame-option';
+      btn.innerHTML = `<div class="fo-num">Frame ${o.frame}</div>
+        <div class="fo-owner">${o.pid} · Pág ${o.page}</div>
+        <div class="fo-owner" style="color:var(--red)">← será movido para SWAP</div>`;
+      btn.onclick = () => { evictAndAllocate(o.frame, o.pid, o.page); modal.classList.remove('open'); };
+      frameList.appendChild(btn);
+    });
+    actions.innerHTML = `<button class="btn" onclick="document.getElementById('p2-modal').classList.remove('open')">Cancelar</button>`;
+  }
+
+  modal.classList.add('open');
+}
+
+function allocateFrame(frame) {
+  if (frame === 1) {
+    p2Log(`✗ VIOLAÇÃO DE PROTEÇÃO — Frame 1 é área do kernel!`, 'log-err');
+    return;
+  }
+  const {pid, page, offset, varName, swapBlock} = p2State.pending;
+
+  // If from SWAP, free the swap block
+  if (swapBlock !== undefined) {
+    p2State.swapBlocks[swapBlock - 16] = null;
+    p2Log(`↑ Swap-in: Bloco SWAP ${swapBlock} → Frame ${frame} (${pid}·Pág${page})`, 'log-warn');
+  } else {
+    p2Log(`+ Alocando Frame ${frame} para ${pid}·Pág${page}`, 'log-accent');
+  }
+
+  p2State.frames[frame] = {pid, page};
+  p2State.pageTable[pid][page] = {state:'RAM', loc:frame};
+
+  const physAddr = frame * PAGE_SIZE + offset;
+  p2Log(`✓ ${pid}.${varName}: Pág${page} → Frame${frame} → 0x${physAddr.toString(16).padStart(4,'0')}`, 'log-ok');
+  document.getElementById('p2-mmu-physaddr').textContent = `0x${physAddr.toString(16).padStart(4,'0')}`;
+  document.getElementById('p2-mmu-state').textContent = 'RAM';
+  document.getElementById('status-badge').textContent = `${pid}.${varName} → 0x${physAddr.toString(16).padStart(4,'0')}`;
+
+  renderP2();
+  flashP2Frame(frame);
+  p2State.pending = null;
+}
+
+function evictAndAllocate(victimFrame, victimPid, victimPage) {
+  const swapIdx = getFreeSwapBlock();
+  if (swapIdx < 0) {
+    p2Log('✗ Área de SWAP cheia! Impossível fazer substituição.', 'log-err');
+    return;
+  }
+
+  // Move victim to SWAP
+  const swapBlock = 16 + swapIdx;
+  p2State.swapBlocks[swapIdx] = {pid: victimPid, page: victimPage};
+  p2State.pageTable[victimPid][victimPage] = {state:'SWAP', loc:swapBlock};
+  p2State.frames[victimFrame] = null;
+  p2Log(`↓ Swap-out: ${victimPid}·Pág${victimPage} Frame${victimFrame} → Bloco SWAP ${swapBlock}`, 'log-warn');
+
+  // Now allocate
+  allocateFrame(victimFrame);
+}
+
+function flashP2Frame(f) {
+  const el = document.getElementById(`p2-frame-${f}`);
+  if (!el) return;
+  el.classList.remove('flash');
+  void el.offsetWidth;
+  el.classList.add('flash');
+}
+
+function resetPart2() {
+  p2LogLines = [];
+  buildPart2();
+  document.getElementById('p2-mmu-ptbr').textContent = '—';
+  document.getElementById('p2-mmu-logaddr').textContent = '—';
+  document.getElementById('p2-mmu-page').textContent = '—';
+  document.getElementById('p2-mmu-offset').textContent = '—';
+  document.getElementById('p2-mmu-state').textContent = '—';
+  document.getElementById('p2-mmu-physaddr').textContent = '—';
+  p2Log('Sistema reiniciado. Todas as páginas INV.', 'log-info');
+  document.getElementById('status-badge').textContent = 'Sistema reiniciado';
+}
+
+// ── Tab switching ──
+function switchTab(n) {
+  document.querySelectorAll('.sim-container').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(`part${n}`).classList.add('active');
+  document.querySelectorAll('.tab')[n-1].classList.add('active');
+  document.getElementById('status-badge').textContent = n === 1 ? 'Nenhuma variável selecionada' : 'Parte 2 — Alocação sob Demanda';
+}
+
+// ── Init ──
+buildPart1();
+buildPart2();
+</script>
+</body>
+</html>
